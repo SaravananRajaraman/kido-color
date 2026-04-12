@@ -118,16 +118,58 @@ npm run preview
 
 The app works fully offline without Firebase. To enable Google Sign-In and cloud drawing save:
 
+### Step 1 — Create a Firebase project
+
 1. Go to [Firebase Console](https://console.firebase.google.com) → **Add project**
-2. Enable **Authentication** → Sign-in providers → **Google**
-3. Enable **Firestore Database** (start in test mode initially)
-4. Enable **Storage**
-5. Go to **Project Settings → Your apps → Web app** → copy the config
-6. Copy `.env.example` to `.env.local` and fill in all `VITE_FIREBASE_*` values
+2. Enter a project name (e.g. `kido-color`) → Continue → Create project
 
-For GitHub Actions deployment with cloud save, add each `VITE_FIREBASE_*` value as a **Repository Secret** (Settings → Secrets and variables → Actions).
+### Step 2 — Enable Google Sign-In
 
-### Firestore Security Rules (recommended)
+1. In your project, go to **Build → Authentication → Sign-in method**
+2. Click **Google** → Enable → enter a support email → **Save**
+3. Under **Settings → Authorized domains**, add:
+   - `localhost` (for local dev — usually already there)
+   - `<your-username>.github.io` (for GitHub Pages deployment)
+
+> ⚠️ Forgetting to add your GitHub Pages domain is the most common reason sign-in fails after deployment.
+
+### Step 3 — Create Firestore Database
+
+1. Go to **Build → Firestore Database → Create database**
+2. Choose **Start in test mode** for development (add security rules before going public)
+3. Pick a region close to your users
+
+### Step 4 — Enable Storage
+
+1. Go to **Build → Storage → Get started**
+2. Accept the default rules, choose the same region as Firestore
+
+### Step 5 — Get your web app config
+
+1. Go to **Project Settings (⚙️)** → **Your apps** → **Add app** → Web (`</>`)
+2. Register the app, then copy the `firebaseConfig` object values
+
+### Step 6 — Configure the app
+
+**For local development:**
+```bash
+cp .env.example .env.local
+# Fill in all VITE_FIREBASE_* values from the config object above
+npm run dev
+```
+
+**For GitHub Pages deployment (GitHub Actions):**
+
+1. Go to your repo → **Settings → Secrets and variables → Actions**
+2. Add each variable as a **Repository secret**:
+   - `VITE_FIREBASE_API_KEY`
+   - `VITE_FIREBASE_AUTH_DOMAIN`
+   - `VITE_FIREBASE_PROJECT_ID`
+   - `VITE_FIREBASE_STORAGE_BUCKET`
+   - `VITE_FIREBASE_MESSAGING_SENDER_ID`
+   - `VITE_FIREBASE_APP_ID`
+
+### Firestore Security Rules (recommended for production)
 
 ```
 rules_version = '2';
@@ -143,6 +185,19 @@ service cloud.firestore {
   }
 }
 ```
+
+### Debugging sign-in issues
+
+Open the app in **development mode** (`npm run dev`) — a small debug panel in the bottom-left corner shows which `VITE_FIREBASE_*` environment variables are set. All six must show ✓ for sign-in to work.
+
+Common failure modes:
+| Symptom | Likely cause |
+|---------|-------------|
+| Sign-in button does nothing | Popup blocked → app falls back to redirect (page reloads) |
+| Error: "auth/unauthorized-domain" | GitHub Pages domain not added to Authorized domains |
+| Error: "auth/invalid-api-key" | Wrong or missing `VITE_FIREBASE_API_KEY` |
+| Sign-in works locally but not on GitHub Pages | Secrets not added to Actions, or domain not authorized |
+
 
 ---
 
