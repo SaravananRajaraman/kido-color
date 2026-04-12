@@ -19,7 +19,7 @@ const firebaseConfig = {
   appId:             import.meta.env.VITE_FIREBASE_APP_ID,
 };
 
-// Only initialise if credentials are present (allows offline/demo mode)
+// Only initialize if credentials are present (allows offline/demo mode)
 const isConfigured =
   firebaseConfig.apiKey &&
   firebaseConfig.apiKey !== 'your-api-key' &&

@@ -116,7 +116,7 @@ export default function TracingMode() {
     cx.font = `bold 20px Arial`;
     cx.fillStyle = '#90A4AE';
     cx.textAlign = 'center';
-    cx.fillText(`Trace the letter  ${letter}`, w / 2, h - 14);
+    cx.fillText(`Trace the letter ${letter}`, w / 2, h - 14);
   }, [letter, traceStyle]);
 
   useEffect(() => { drawGuide(); }, [drawGuide]);

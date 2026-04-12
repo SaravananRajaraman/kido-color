@@ -29,6 +29,17 @@ export function useDrawing({ canvasRef, tool, color, brushSize, enabled = true }
   const lastPos   = useRef(null);
   const ctx       = useRef(null);
 
+  // Keep mutable refs for tool/color/brushSize so stable event handlers
+  // always read the latest values without needing re-registration.
+  const toolRef      = useRef(tool);
+  const colorRef     = useRef(color);
+  const brushSizeRef = useRef(brushSize);
+  const enabledRef   = useRef(enabled);
+  useEffect(() => { toolRef.current      = tool;      }, [tool]);
+  useEffect(() => { colorRef.current     = color;     }, [color]);
+  useEffect(() => { brushSizeRef.current = brushSize; }, [brushSize]);
+  useEffect(() => { enabledRef.current   = enabled;   }, [enabled]);
+
   /* ── helpers ─────────────────────────────────── */
   function getCanvas() { return canvasRef.current; }
   function getCtx()    {
@@ -293,31 +304,31 @@ export function useDrawing({ canvasRef, tool, color, brushSize, enabled = true }
 
   /* ── event handlers ──────────────────────────── */
   function onStart(e) {
-    if (!enabled) return;
+    if (!enabledRef.current) return;
     e.preventDefault();
     const pos = getPos(e);
     const cx  = getCtx();
     if (!cx) return;
 
-    if (tool === TOOLS.FILL) {
+    if (toolRef.current === TOOLS.FILL) {
       snapshot();
-      floodFill(cx, getCanvas(), pos.x, pos.y, color);
+      floodFill(cx, getCanvas(), pos.x, pos.y, colorRef.current);
       return;
     }
 
     snapshot();
     drawing.current = true;
     lastPos.current = pos;
-    drawSegment(cx, pos, pos, tool, color, brushSize);
+    drawSegment(cx, pos, pos, toolRef.current, colorRef.current, brushSizeRef.current);
   }
 
   function onMove(e) {
-    if (!drawing.current || !enabled) return;
+    if (!drawing.current || !enabledRef.current) return;
     e.preventDefault();
     const pos = getPos(e);
     const cx  = getCtx();
     if (!cx) return;
-    drawSegment(cx, lastPos.current, pos, tool, color, brushSize);
+    drawSegment(cx, lastPos.current, pos, toolRef.current, colorRef.current, brushSizeRef.current);
     lastPos.current = pos;
   }
 
@@ -328,20 +339,32 @@ export function useDrawing({ canvasRef, tool, color, brushSize, enabled = true }
   }
 
   /* ── attach events ───────────────────────────── */
+  // Handlers read tool/color/brushSize via refs so the listeners only need
+  // to be registered once per canvas instance, not on every render.
+  const onStartRef = useRef(onStart);
+  const onMoveRef  = useRef(onMove);
+  const onEndRef   = useRef(onEnd);
+  onStartRef.current = onStart;
+  onMoveRef.current  = onMove;
+  onEndRef.current   = onEnd;
+
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    canvas.addEventListener('pointerdown', onStart, { passive: false });
-    canvas.addEventListener('pointermove', onMove,  { passive: false });
-    canvas.addEventListener('pointerup',   onEnd,   { passive: false });
-    canvas.addEventListener('pointerleave',onEnd,   { passive: false });
+    const start = e => onStartRef.current(e);
+    const move  = e => onMoveRef.current(e);
+    const end   = e => onEndRef.current(e);
+    canvas.addEventListener('pointerdown', start, { passive: false });
+    canvas.addEventListener('pointermove', move,  { passive: false });
+    canvas.addEventListener('pointerup',   end,   { passive: false });
+    canvas.addEventListener('pointerleave',end,   { passive: false });
     return () => {
-      canvas.removeEventListener('pointerdown', onStart);
-      canvas.removeEventListener('pointermove', onMove);
-      canvas.removeEventListener('pointerup',   onEnd);
-      canvas.removeEventListener('pointerleave',onEnd);
+      canvas.removeEventListener('pointerdown', start);
+      canvas.removeEventListener('pointermove', move);
+      canvas.removeEventListener('pointerup',   end);
+      canvas.removeEventListener('pointerleave',end);
     };
-  });                     // re-attach on every render so tool/color/size refs are fresh
+  }, [canvasRef]); // only re-attach when the canvas element changes
 
   return { undo, redo, clearCanvas };
 }
