@@ -1,54 +1,109 @@
 /**
- * components/FreeDrawMode.jsx — blank canvas free drawing
+ * components/FreeDrawMode.jsx — blank canvas free drawing (Konva-based)
+ *
+ * Layer stack (bottom to top):
+ *   bgLayer   – white fill (non-interactive)
+ *   drawLayer – all user strokes + eraser
  */
 import { useRef, useEffect, useState } from 'react';
-import { useApp }     from '../context/AppContext.jsx';
-import { useDrawing } from '../hooks/useDrawing.js';
-import ToolPanel      from './ToolPanel.jsx';
-import ActionBar      from './ActionBar.jsx';
-import SaveDialog     from './SaveDialog.jsx';
+import { Stage, Layer }                from 'react-konva';
+import { useApp }                      from '../context/AppContext.jsx';
+import { useKonvaDrawing }             from '../hooks/useKonvaDrawing.js';
+import ToolPanel                       from './ToolPanel.jsx';
+import ActionBar                       from './ActionBar.jsx';
+import SaveDialog                      from './SaveDialog.jsx';
 
 export default function FreeDrawMode() {
   const { tool, color, brushSize, panelOpen, setPanelOpen } = useApp();
 
-  const canvasRef    = useRef(null);
   const containerRef = useRef(null);
+  const stageRef     = useRef(null);
+  const bgLayerRef   = useRef(null);
+  const drawLayerRef = useRef(null);
+  const [size, setSize]     = useState({ width: 0, height: 0 });
   const [showSave, setShowSave] = useState(false);
 
-  const { undo, redo, clearCanvas } = useDrawing({
-    canvasRef,
+  const { undo, redo, clearCanvas,
+          handlePointerDown, handlePointerMove, handlePointerUp } = useKonvaDrawing({
+    stageRef,
+    drawLayerRef,
     tool, color, brushSize,
     enabled: true,
   });
 
-  /* ── resize ──────────────────────────────────── */
+  /* ── paint bg white once draw layer is ready ──── */
+  function paintBackground() {
+    const dc = drawLayerRef.current?.getCanvas?.()?.getElement?.();
+    if (!dc) return;
+    const cx = dc.getContext('2d');
+    cx.fillStyle = '#ffffff';
+    cx.fillRect(0, 0, dc.width, dc.height);
+    drawLayerRef.current?.batchDraw();
+  }
+
+  /* ── responsive resize ─────────────────────────── */
   useEffect(() => {
-    function resize() {
+    function onResize() {
       const c = containerRef.current;
-      const cv = canvasRef.current;
-      if (!c || !cv) return;
+      if (!c) return;
       const { width, height } = c.getBoundingClientRect();
-      const ctx  = cv.getContext('2d');
-      const prev = ctx.getImageData(0, 0, cv.width, cv.height);
-      cv.width  = Math.round(width);
-      cv.height = Math.round(height);
-      ctx.fillStyle = '#ffffff';
-      ctx.fillRect(0, 0, cv.width, cv.height);
-      if (prev.width && prev.height) {
-        const tmp  = document.createElement('canvas');
-        tmp.width  = prev.width; tmp.height = prev.height;
-        tmp.getContext('2d').putImageData(prev, 0, 0);
-        ctx.drawImage(tmp, 0, 0, cv.width, cv.height);
+      const w = Math.round(width);
+      const h = Math.round(height);
+      if (!w || !h) return;
+
+      // Preserve existing drawing before resize
+      const dc = drawLayerRef.current?.getCanvas?.()?.getElement?.();
+      let saved = null;
+      if (dc && dc.width && dc.height) {
+        const tmp = document.createElement('canvas');
+        tmp.width  = dc.width;
+        tmp.height = dc.height;
+        tmp.getContext('2d').drawImage(dc, 0, 0);
+        saved = tmp;
       }
+
+      setSize({ width: w, height: h });
+
+      // Restore after Konva re-sizes the stage on next frame
+      requestAnimationFrame(() => {
+        const dc2 = drawLayerRef.current?.getCanvas?.()?.getElement?.();
+        if (!dc2) return;
+        const cx = dc2.getContext('2d');
+        cx.fillStyle = '#ffffff';
+        cx.fillRect(0, 0, dc2.width, dc2.height);
+        if (saved) cx.drawImage(saved, 0, 0, dc2.width, dc2.height);
+        drawLayerRef.current?.batchDraw();
+      });
     }
-    const ro = new ResizeObserver(resize);
+
+    const ro = new ResizeObserver(onResize);
     if (containerRef.current) ro.observe(containerRef.current);
+    onResize();
     return () => ro.disconnect();
   }, []);
 
+  /* build a merged canvas ref for SaveDialog */
+  const mergedRef = useRef(null);
+  function getMergedRef() {
+    const stage = stageRef.current;
+    if (!stage) return { current: null };
+    const merged = document.createElement('canvas');
+    merged.width  = stage.width();
+    merged.height = stage.height();
+    const ctx = merged.getContext('2d');
+    // White background first, then draw layer
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, merged.width, merged.height);
+    const dc = drawLayerRef.current?.getCanvas?.()?.getElement?.();
+    if (dc) ctx.drawImage(dc, 0, 0);
+    mergedRef.current = merged;
+    return { current: merged };
+  }
+
   function handleDownload() {
+    getMergedRef();
     const a = document.createElement('a');
-    a.href     = canvasRef.current?.toDataURL('image/png') ?? '';
+    a.href     = mergedRef.current?.toDataURL('image/png') ?? '';
     a.download = `kido-draw-${Date.now()}.png`;
     a.click();
   }
@@ -56,8 +111,28 @@ export default function FreeDrawMode() {
   return (
     <section className="mode-section" aria-label="Free drawing mode">
       <div className="canvas-area" ref={containerRef}>
-        <div className="canvas-container">
-          <canvas ref={canvasRef} aria-label="Free drawing canvas"/>
+        <div className="canvas-container" style={{ width: '100%', height: '100%' }}>
+          {size.width > 0 && size.height > 0 && (
+            <Stage
+              ref={stageRef}
+              width={size.width}
+              height={size.height}
+              style={{ display: 'block' }}
+              onPointerDown={handlePointerDown}
+              onPointerMove={handlePointerMove}
+              onPointerUp={handlePointerUp}
+              onPointerLeave={handlePointerUp}
+            >
+              {/* background layer — white fill, non-interactive */}
+              <Layer ref={bgLayerRef} listening={false} />
+
+              {/* draw layer — all user strokes */}
+              <Layer
+                ref={drawLayerRef}
+                onMount={paintBackground}
+              />
+            </Stage>
+          )}
         </div>
       </div>
 
@@ -66,7 +141,7 @@ export default function FreeDrawMode() {
         onRedo={redo}
         onClear={() => clearCanvas(true)}
         clearLabel="Clear"
-        onSave={() => setShowSave(true)}
+        onSave={() => { getMergedRef(); setShowSave(true); }}
         onDownload={handleDownload}
       />
       <button
@@ -80,7 +155,7 @@ export default function FreeDrawMode() {
       </button>
 
       <ToolPanel />
-      {showSave && <SaveDialog canvasRef={canvasRef} onClose={() => setShowSave(false)} />}
+      {showSave && <SaveDialog canvasRef={mergedRef} onClose={() => setShowSave(false)} />}
     </section>
   );
 }

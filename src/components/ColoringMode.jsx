@@ -1,49 +1,62 @@
 /**
- * components/ColoringMode.jsx
+ * components/ColoringMode.jsx — A–Z coloring with Konva layers
  *
- * A–Z coloring with SVG outline illustrations.
- * Three canvas layers (bottom to top):
- *   1. svgCanvasRef  – the SVG outline (read-only, pointer-events:none)
- *   2. fillCanvasRef – bucket-fill colour regions (separate from strokes)
- *   3. drawCanvasRef – pencil / brush strokes
+ * Layer stack (bottom → top):
+ *   bgLayer   – SVG outline stamped onto a plain canvas  (non-interactive)
+ *   fillLayer – bucket-fill colour regions               (non-interactive)
+ *   drawLayer – pencil / brush strokes                   (interactive)
  *
- * On letter/category change the SVG is re-stamped and both paint layers
- * are cleared.
+ * Switching letter/category clears the fill + draw layers and re-stamps
+ * the SVG outline.
  */
 import { useRef, useEffect, useCallback, useState } from 'react';
-import { useApp }                   from '../context/AppContext.jsx';
-import { COLORING_IMAGES, CATEGORIES } from '../data/coloringImages.js';
-import { useDrawing }               from '../hooks/useDrawing.js';
-import ToolPanel                    from './ToolPanel.jsx';
-import ActionBar                    from './ActionBar.jsx';
-import SaveDialog                   from './SaveDialog.jsx';
-
-const LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
+import { Stage, Layer }                             from 'react-konva';
+import { useApp }                                   from '../context/AppContext.jsx';
+import { COLORING_IMAGES, CATEGORIES }              from '../data/coloringImages.js';
+import { useKonvaDrawing }                          from '../hooks/useKonvaDrawing.js';
+import ToolPanel                                    from './ToolPanel.jsx';
+import ActionBar                                    from './ActionBar.jsx';
+import SaveDialog                                   from './SaveDialog.jsx';
 
 export default function ColoringMode() {
-  const { tool, color, brushSize, letter, setLetter, category, setCategory, panelOpen, setPanelOpen,
-          markComplete, isCompleted } = useApp();
+  const {
+    tool, color, brushSize,
+    letter, setLetter,
+    category, setCategory,
+    panelOpen, setPanelOpen,
+    markComplete, isCompleted,
+  } = useApp();
 
-  const svgCanvasRef  = useRef(null);   // bottom: SVG outline
-  const fillCanvasRef = useRef(null);   // middle: fill layer
-  const drawCanvasRef = useRef(null);   // top: user strokes
-  const containerRef  = useRef(null);
+  const containerRef = useRef(null);
+  const stageRef     = useRef(null);
+  const bgLayerRef   = useRef(null);   // bottom: SVG outline
+  const fillLayerRef = useRef(null);   // middle: fill
+  const drawLayerRef = useRef(null);   // top: strokes
 
+  const [size,     setSize]     = useState({ width: 0, height: 0 });
   const [showSave, setShowSave] = useState(false);
 
-  const { undo, redo, isFilling } = useDrawing({
-    canvasRef:     drawCanvasRef,
-    fillCanvasRef: fillCanvasRef,
+  const {
+    undo, redo, isFilling,
+    handlePointerDown, handlePointerMove, handlePointerUp,
+  } = useKonvaDrawing({
+    stageRef,
+    drawLayerRef,
+    fillLayerRef,
+    bgLayerRef,
     tool, color, brushSize,
     enabled: true,
   });
 
-  /* ── stamp SVG onto bottom canvas ─────────────── */
+  /* ── stamp SVG outline onto bg layer ──────────── */
   const stampSvg = useCallback(() => {
-    const canvas = svgCanvasRef.current;
+    const layer = bgLayerRef.current;
+    if (!layer) return;
+    const canvas = layer.getCanvas?.()?.getElement?.();
     if (!canvas || !canvas.width) return;
+
     const image = COLORING_IMAGES.find(
-      img => img.letter === letter && img.category === category
+      img => img.letter === letter && img.category === category,
     ) ?? COLORING_IMAGES.find(img => img.letter === letter);
     if (!image) return;
 
@@ -54,147 +67,151 @@ export default function ColoringMode() {
 
     function drawLabel() {
       ctx.save();
-      ctx.font = 'bold 22px "Arial Rounded MT Bold",Arial,sans-serif';
-      ctx.fillStyle = '#1C1C1C';
-      ctx.textAlign = 'center';
+      ctx.font         = 'bold 22px "Arial Rounded MT Bold",Arial,sans-serif';
+      ctx.fillStyle    = '#1C1C1C';
+      ctx.textAlign    = 'center';
       ctx.textBaseline = 'bottom';
       ctx.fillText(`${image.letter} is for ${image.name}`, canvas.width / 2, canvas.height - 6);
       ctx.restore();
+      layer.batchDraw();
     }
 
-    // Support both inline SVG strings and path-based entries
+    function renderImg(img) {
+      const pad   = 20;
+      const scale = Math.min(
+        (canvas.width  - pad * 2) / img.naturalWidth,
+        (canvas.height - pad * 2) / img.naturalHeight,
+      );
+      const dw = img.naturalWidth  * scale;
+      const dh = img.naturalHeight * scale;
+      const dx = (canvas.width  - dw) / 2;
+      const dy = (canvas.height - dh) / 2;
+      ctx.drawImage(img, dx, dy, dw, dh);
+      drawLabel();
+    }
+
     if (image.path) {
-      const img = new Image();
-      img.onload = () => {
-        const pad   = 20;
-        const scale = Math.min(
-          (canvas.width  - pad * 2) / img.naturalWidth,
-          (canvas.height - pad * 2) / img.naturalHeight,
-        );
-        const dw = img.naturalWidth  * scale;
-        const dh = img.naturalHeight * scale;
-        const dx = (canvas.width  - dw) / 2;
-        const dy = (canvas.height - dh) / 2;
-        ctx.drawImage(img, dx, dy, dw, dh);
-        drawLabel();
-      };
-      img.src = image.path;
+      const img  = new Image();
+      img.onload = () => renderImg(img);
+      img.src    = image.path;
     } else if (image.svg) {
-      const svgBlob = new Blob([image.svg], { type: 'image/svg+xml' });
-      const url     = URL.createObjectURL(svgBlob);
-      const img     = new Image();
-      img.onload = () => {
-        const pad  = 20;
-        const scale = Math.min(
-          (canvas.width  - pad * 2) / img.naturalWidth,
-          (canvas.height - pad * 2) / img.naturalHeight,
-        );
-        const dw = img.naturalWidth  * scale;
-        const dh = img.naturalHeight * scale;
-        const dx = (canvas.width  - dw) / 2;
-        const dy = (canvas.height - dh) / 2;
-        ctx.drawImage(img, dx, dy, dw, dh);
-        drawLabel();
-        URL.revokeObjectURL(url);
-      };
+      const blob   = new Blob([image.svg], { type: 'image/svg+xml' });
+      const url    = URL.createObjectURL(blob);
+      const img    = new Image();
+      img.onload  = () => { renderImg(img); URL.revokeObjectURL(url); };
       img.onerror = () => URL.revokeObjectURL(url);
-      img.src = url;
+      img.src     = url;
     }
   }, [letter, category]);
 
-  /* ── resize canvases ─────────────────────────── */
+  /* ── responsive resize ─────────────────────────── */
   useEffect(() => {
-    function resize() {
+    function onResize() {
       const c = containerRef.current;
       if (!c) return;
       const { width, height } = c.getBoundingClientRect();
-      for (const ref of [svgCanvasRef, fillCanvasRef, drawCanvasRef]) {
-        if (!ref.current) continue;
-        const canvas = ref.current;
-        const ctx    = canvas.getContext('2d');
-        const imgData = (canvas === drawCanvasRef.current || canvas === fillCanvasRef.current)
-          ? ctx.getImageData(0, 0, canvas.width, canvas.height)
-          : null;
-        canvas.width  = Math.round(width);
-        canvas.height = Math.round(height);
-        if (imgData) {
-          const tmp  = document.createElement('canvas');
-          tmp.width  = imgData.width;
-          tmp.height = imgData.height;
-          tmp.getContext('2d').putImageData(imgData, 0, 0);
-          ctx.drawImage(tmp, 0, 0, canvas.width, canvas.height);
-        }
-      }
-      stampSvg();
+      const w = Math.round(width);
+      const h = Math.round(height);
+      if (!w || !h) return;
+
+      // Preserve fill + draw layers
+      const layerRefs = [fillLayerRef, drawLayerRef];
+      const saved = layerRefs.map(ref => {
+        const el = ref.current?.getCanvas?.()?.getElement?.();
+        if (!el || !el.width) return null;
+        const tmp = document.createElement('canvas');
+        tmp.width  = el.width;
+        tmp.height = el.height;
+        tmp.getContext('2d').drawImage(el, 0, 0);
+        return tmp;
+      });
+
+      setSize({ width: w, height: h });
+
+      requestAnimationFrame(() => {
+        layerRefs.forEach((ref, i) => {
+          const el = ref.current?.getCanvas?.()?.getElement?.();
+          if (!el || !saved[i]) return;
+          const cx = el.getContext('2d');
+          cx.clearRect(0, 0, el.width, el.height);
+          cx.drawImage(saved[i], 0, 0, el.width, el.height);
+          ref.current?.batchDraw();
+        });
+        stampSvg();
+      });
     }
-    const ro = new ResizeObserver(resize);
+
+    const ro = new ResizeObserver(onResize);
     if (containerRef.current) ro.observe(containerRef.current);
+    onResize();
     return () => ro.disconnect();
   }, [letter, category, stampSvg]);
 
-  /* re-stamp when letter or category changes */
+  /* re-stamp when letter/category changes */
   useEffect(() => { stampSvg(); }, [stampSvg]);
 
-  /* clear paint layers when letter/category changes */
+  /* clear paint layers when subject changes */
   useEffect(() => {
-    for (const ref of [drawCanvasRef, fillCanvasRef]) {
-      const c = ref.current;
-      if (!c) continue;
-      c.getContext('2d').clearRect(0, 0, c.width, c.height);
+    for (const ref of [drawLayerRef, fillLayerRef]) {
+      const el = ref.current?.getCanvas?.()?.getElement?.();
+      if (el) el.getContext('2d').clearRect(0, 0, el.width, el.height);
+      ref.current?.batchDraw();
     }
   }, [letter, category]);
 
+  /* ── derived data ──────────────────────────────── */
   const filteredImages = COLORING_IMAGES.filter(i => i.category === category);
   const lettersInCat   = [...new Set(filteredImages.map(i => i.letter))];
 
+  /* ── action handlers ───────────────────────────── */
   function handleClear() {
-    const c  = drawCanvasRef.current;
-    if (c) c.getContext('2d').clearRect(0, 0, c.width, c.height);
-    const f  = fillCanvasRef.current;
-    if (f) f.getContext('2d').clearRect(0, 0, f.width, f.height);
+    for (const ref of [drawLayerRef, fillLayerRef]) {
+      const el = ref.current?.getCanvas?.()?.getElement?.();
+      if (el) el.getContext('2d').clearRect(0, 0, el.width, el.height);
+      ref.current?.batchDraw();
+    }
   }
 
   function handleMarkDone() {
     markComplete('color', letter);
-    // Advance to next available letter in category
     const idx  = lettersInCat.indexOf(letter);
     const next = lettersInCat[(idx + 1) % lettersInCat.length];
     if (next && next !== letter) setLetter(next);
   }
 
-  function handleDownload() {
+  function buildMergedCanvas() {
+    const stage = stageRef.current;
+    if (!stage) return null;
     const merged = document.createElement('canvas');
-    merged.width  = svgCanvasRef.current.width;
-    merged.height = svgCanvasRef.current.height;
+    merged.width  = stage.width();
+    merged.height = stage.height();
     const ctx = merged.getContext('2d');
-    ctx.drawImage(svgCanvasRef.current,  0, 0);
-    if (fillCanvasRef.current) ctx.drawImage(fillCanvasRef.current, 0, 0);
-    ctx.drawImage(drawCanvasRef.current, 0, 0);
+    for (const ref of [bgLayerRef, fillLayerRef, drawLayerRef]) {
+      const el = ref.current?.getCanvas?.()?.getElement?.();
+      if (el) ctx.drawImage(el, 0, 0);
+    }
+    return merged;
+  }
+
+  function handleDownload() {
+    const merged = buildMergedCanvas();
+    if (!merged) return;
     const a = document.createElement('a');
     a.href     = merged.toDataURL('image/png');
     a.download = `kido-color-${letter}.png`;
     a.click();
   }
 
-  // Merged canvas ref for SaveDialog
   const mergedRef = useRef(null);
-  function getMergedCanvas() {
-    const merged = document.createElement('canvas');
-    merged.width  = svgCanvasRef.current?.width  ?? 600;
-    merged.height = svgCanvasRef.current?.height ?? 480;
-    const ctx = merged.getContext('2d');
-    if (svgCanvasRef.current)  ctx.drawImage(svgCanvasRef.current,  0, 0);
-    if (fillCanvasRef.current) ctx.drawImage(fillCanvasRef.current, 0, 0);
-    if (drawCanvasRef.current) ctx.drawImage(drawCanvasRef.current, 0, 0);
-    mergedRef.current = merged;
-    return { current: merged };
+  function getMergedRef() {
+    mergedRef.current = buildMergedCanvas();
+    return { current: mergedRef.current };
   }
 
   return (
     <section className="mode-section" aria-label="Coloring mode">
       {/* selector bar */}
       <div className="selector-bar">
-        {/* category tabs */}
         <div className="style-selector" role="group" aria-label="Category">
           {CATEGORIES.map(cat => (
             <button
@@ -203,11 +220,10 @@ export default function ColoringMode() {
               onClick={() => setCategory(cat)}
               aria-pressed={category === cat}
             >
-              {{animals:'🐾 Animals', vehicles:'🚗 Vehicles', nature:'🌿 Nature'}[cat]}
+              {{ animals:'🐾 Animals', vehicles:'🚗 Vehicles', nature:'🌿 Nature' }[cat]}
             </button>
           ))}
         </div>
-        {/* letter strip */}
         <div className="letter-grid" role="group" aria-label="Choose a letter">
           {lettersInCat.map(l => (
             <button
@@ -226,11 +242,25 @@ export default function ColoringMode() {
 
       {/* canvas area */}
       <div className="canvas-area" ref={containerRef}>
-        <div className="canvas-container">
-          <canvas ref={svgCanvasRef}  style={{ pointerEvents:'none' }} aria-hidden="true"/>
-          <canvas ref={fillCanvasRef} style={{ pointerEvents:'none' }} aria-hidden="true"/>
-          <canvas ref={drawCanvasRef} aria-label="Coloring canvas"/>
+        <div className="canvas-container" style={{ width: '100%', height: '100%' }}>
+          {size.width > 0 && size.height > 0 && (
+            <Stage
+              ref={stageRef}
+              width={size.width}
+              height={size.height}
+              style={{ display: 'block' }}
+              onPointerDown={handlePointerDown}
+              onPointerMove={handlePointerMove}
+              onPointerUp={handlePointerUp}
+              onPointerLeave={handlePointerUp}
+            >
+              <Layer ref={bgLayerRef}   listening={false} />
+              <Layer ref={fillLayerRef} listening={false} />
+              <Layer ref={drawLayerRef} />
+            </Stage>
+          )}
         </div>
+
         {isFilling && (
           <div className="fill-overlay" aria-live="polite" aria-label="Filling…">
             <span className="spinner fill-spinner" />
@@ -244,14 +274,13 @@ export default function ColoringMode() {
         </div>
       </div>
 
-      {/* action bar */}
       <ActionBar
         onUndo={undo}
         onRedo={redo}
         onClear={handleClear}
         clearLabel="Clear Paint"
         onDone={handleMarkDone}
-        onSave={() => { getMergedCanvas(); setShowSave(true); }}
+        onSave={() => { getMergedRef(); setShowSave(true); }}
         onDownload={handleDownload}
       />
       <button
