@@ -14,6 +14,7 @@ import { useRef, useEffect, useCallback, useState } from 'react';
 import { useApp }                   from '../context/AppContext.jsx';
 import { COLORING_IMAGES, CATEGORIES } from '../data/coloringImages.js';
 import { useDrawing }               from '../hooks/useDrawing.js';
+import useAudio                     from '../hooks/useAudio.js';
 import ToolPanel                    from './ToolPanel.jsx';
 import ActionBar                    from './ActionBar.jsx';
 import SaveDialog                   from './SaveDialog.jsx';
@@ -22,6 +23,7 @@ const LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
 
 export default function ColoringMode() {
   const { tool, color, brushSize, letter, setLetter, category, setCategory, panelOpen, setPanelOpen } = useApp();
+  const { playClick, playSelect } = useAudio();
 
   const svgCanvasRef  = useRef(null);   // bottom: SVG outline
   const fillCanvasRef = useRef(null);   // middle: fill layer
@@ -191,7 +193,7 @@ export default function ColoringMode() {
             <button
               key={cat}
               className={`style-btn${category === cat ? ' active' : ''}`}
-              onClick={() => setCategory(cat)}
+              onClick={() => { playSelect(); setCategory(cat); }}
               aria-pressed={category === cat}
             >
               {{animals:'🐾 Animals', vehicles:'🚗 Vehicles', nature:'🌿 Nature'}[cat]}
@@ -204,7 +206,7 @@ export default function ColoringMode() {
             <button
               key={l}
               className={`letter-btn${letter === l ? ' active' : ''}`}
-              onClick={() => setLetter(l)}
+              onClick={() => { playSelect(); setLetter(l); }}
               aria-label={`Letter ${l}`}
               aria-pressed={letter === l}
             >
@@ -246,7 +248,7 @@ export default function ColoringMode() {
       <button
         className="action-btn btn-tools"
         style={{ position:'fixed', bottom:'72px', right:'12px', zIndex:200 }}
-        onClick={() => setPanelOpen(true)}
+        onClick={() => { playClick(); setPanelOpen(true); }}
         aria-label="Open tools panel"
         aria-expanded={panelOpen}
       >

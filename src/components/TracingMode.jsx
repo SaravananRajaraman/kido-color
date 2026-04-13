@@ -15,6 +15,7 @@
 import { useRef, useEffect, useCallback, useState } from 'react';
 import { useApp }       from '../context/AppContext.jsx';
 import { useDrawing }   from '../hooks/useDrawing.js';
+import useAudio         from '../hooks/useAudio.js';
 import ToolPanel        from './ToolPanel.jsx';
 import ActionBar        from './ActionBar.jsx';
 import SaveDialog       from './SaveDialog.jsx';
@@ -32,6 +33,7 @@ const GUIDE_FONT = '"Fredoka One","Arial Rounded MT Bold",Arial,sans-serif';
 
 export default function TracingMode() {
   const { tool, color, brushSize, letter, setLetter, traceStyle, setTraceStyle, setPanelOpen } = useApp();
+  const { playClick, playSelect, playCelebrate } = useAudio();
 
   const bgCanvasRef   = useRef(null);   // lined paper + guide letter
   const drawCanvasRef = useRef(null);   // user strokes
@@ -188,7 +190,7 @@ export default function TracingMode() {
     }
 
     if (guide > 0 && covered / guide > 0.35) {
-      if (!celebrate) setCelebrate(true);
+      if (!celebrate) { playCelebrate(); setCelebrate(true); }
     }
   }
 
@@ -234,7 +236,7 @@ export default function TracingMode() {
             <button
               key={s.id}
               className={`style-btn${traceStyle === s.id ? ' active' : ''}`}
-              onClick={() => { resetDrawLayer(); setTraceStyle(s.id); }}
+              onClick={() => { playSelect(); resetDrawLayer(); setTraceStyle(s.id); }}
               aria-pressed={traceStyle === s.id}
             >
               {s.label}
@@ -246,7 +248,7 @@ export default function TracingMode() {
             <button
               key={l}
               className={`letter-btn${letter === l ? ' active' : ''}`}
-              onClick={() => { resetDrawLayer(); setLetter(l); }}
+              onClick={() => { playSelect(); resetDrawLayer(); setLetter(l); }}
               aria-label={`Letter ${l}`}
               aria-pressed={letter === l}
             >
@@ -278,6 +280,7 @@ export default function TracingMode() {
                   <button
                     className="completion-btn"
                     onClick={() => {
+                      playClick();
                       const next = LETTERS[(LETTERS.indexOf(letter) + 1) % 26];
                       resetDrawLayer();
                       setLetter(next);
@@ -287,7 +290,7 @@ export default function TracingMode() {
                   </button>
                   <button
                     className="completion-btn completion-btn-retry"
-                    onClick={handleClear}
+                    onClick={() => { playClick(); handleClear(); }}
                   >
                     Try Again 🔄
                   </button>
@@ -309,7 +312,7 @@ export default function TracingMode() {
       <button
         className="action-btn btn-tools"
         style={{ position:'fixed', bottom:'72px', right:'12px', zIndex:200 }}
-        onClick={() => setPanelOpen(true)}
+        onClick={() => { playClick(); setPanelOpen(true); }}
         aria-label="Open tools panel"
       >
         🛠️ Tools
