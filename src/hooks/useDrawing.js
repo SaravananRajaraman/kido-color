@@ -12,36 +12,45 @@
  *   water     – radial gradient bleeds with opacity
  *   poster    – thick opaque flat stroke
  *   oil       – base + highlight + shadow layers
- *   fill      – scanline flood-fill with tolerance
+ *   fill      – scanline flood-fill with tolerance + dilation
  *   eraser    – white stroke
  *
  * Undo/redo: 25-frame ImageData stack.
+ *
+ * Optional `fillCanvasRef`: when provided, bucket-fill operations are
+ * painted onto this separate canvas layer instead of the main draw
+ * canvas so that strokes and fills can be cleared independently.
  */
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { TOOLS } from '../context/AppContext.jsx';
+import { hexToRgba, colorAlpha, lighten, darken } from '../utils/colorUtils.js';
 
 const UNDO_LIMIT = 25;
 
-export function useDrawing({ canvasRef, tool, color, brushSize, enabled = true }) {
+export function useDrawing({ canvasRef, fillCanvasRef, tool, color, brushSize, enabled = true }) {
   const undoStack = useRef([]);
   const redoStack = useRef([]);
   const drawing   = useRef(false);
   const lastPos   = useRef(null);
   const ctx       = useRef(null);
+  const [isFilling, setIsFilling] = useState(false);
 
   // Keep mutable refs for tool/color/brushSize so stable event handlers
   // always read the latest values without needing re-registration.
-  const toolRef      = useRef(tool);
-  const colorRef     = useRef(color);
-  const brushSizeRef = useRef(brushSize);
-  const enabledRef   = useRef(enabled);
-  useEffect(() => { toolRef.current      = tool;      }, [tool]);
-  useEffect(() => { colorRef.current     = color;     }, [color]);
-  useEffect(() => { brushSizeRef.current = brushSize; }, [brushSize]);
-  useEffect(() => { enabledRef.current   = enabled;   }, [enabled]);
+  const toolRef         = useRef(tool);
+  const colorRef        = useRef(color);
+  const brushSizeRef    = useRef(brushSize);
+  const enabledRef      = useRef(enabled);
+  const fillCanvasRefMut = useRef(fillCanvasRef);
+  useEffect(() => { toolRef.current         = tool;          }, [tool]);
+  useEffect(() => { colorRef.current        = color;         }, [color]);
+  useEffect(() => { brushSizeRef.current    = brushSize;     }, [brushSize]);
+  useEffect(() => { enabledRef.current      = enabled;       }, [enabled]);
+  useEffect(() => { fillCanvasRefMut.current = fillCanvasRef; }, [fillCanvasRef]);
 
   /* ── helpers ─────────────────────────────────── */
   function getCanvas() { return canvasRef.current; }
+  function getFillCanvas() { return fillCanvasRefMut.current?.current ?? null; }
   function getCtx()    {
     if (ctx.current) return ctx.current;
     const c = getCanvas();
@@ -53,30 +62,43 @@ export function useDrawing({ canvasRef, tool, color, brushSize, enabled = true }
   function snapshot() {
     const c = getCanvas();
     if (!c) return;
-    undoStack.current.push(getCtx().getImageData(0, 0, c.width, c.height));
+    const entry = { draw: getCtx().getImageData(0, 0, c.width, c.height) };
+    const fc = getFillCanvas();
+    if (fc) entry.fill = fc.getContext('2d').getImageData(0, 0, fc.width, fc.height);
+    undoStack.current.push(entry);
     if (undoStack.current.length > UNDO_LIMIT) undoStack.current.shift();
     redoStack.current = [];
   }
 
-  const undo = useCallback(() => {
+  function undo() {
     if (!undoStack.current.length) return;
     const c = getCanvas();
     const cx = getCtx();
     if (!c || !cx) return;
-    redoStack.current.push(cx.getImageData(0, 0, c.width, c.height));
-    cx.putImageData(undoStack.current.pop(), 0, 0);
-  }, []);
+    const current = { draw: cx.getImageData(0, 0, c.width, c.height) };
+    const fc = getFillCanvas();
+    if (fc) current.fill = fc.getContext('2d').getImageData(0, 0, fc.width, fc.height);
+    redoStack.current.push(current);
+    const prev = undoStack.current.pop();
+    cx.putImageData(prev.draw, 0, 0);
+    if (fc && prev.fill) fc.getContext('2d').putImageData(prev.fill, 0, 0);
+  }
 
-  const redo = useCallback(() => {
+  function redo() {
     if (!redoStack.current.length) return;
     const c = getCanvas();
     const cx = getCtx();
     if (!c || !cx) return;
-    undoStack.current.push(cx.getImageData(0, 0, c.width, c.height));
-    cx.putImageData(redoStack.current.pop(), 0, 0);
-  }, []);
+    const current = { draw: cx.getImageData(0, 0, c.width, c.height) };
+    const fc = getFillCanvas();
+    if (fc) current.fill = fc.getContext('2d').getImageData(0, 0, fc.width, fc.height);
+    undoStack.current.push(current);
+    const next = redoStack.current.pop();
+    cx.putImageData(next.draw, 0, 0);
+    if (fc && next.fill) fc.getContext('2d').putImageData(next.fill, 0, 0);
+  }
 
-  const clearCanvas = useCallback((fillWhite = true) => {
+  function clearCanvas(fillWhite = true) {
     const c  = getCanvas();
     const cx = getCtx();
     if (!c || !cx) return;
@@ -86,7 +108,16 @@ export function useDrawing({ canvasRef, tool, color, brushSize, enabled = true }
       cx.fillStyle = '#ffffff';
       cx.fillRect(0, 0, c.width, c.height);
     }
-  }, []);
+    const fc = getFillCanvas();
+    if (fc) fc.getContext('2d').clearRect(0, 0, fc.width, fc.height);
+  }
+
+  function clearFillLayer() {
+    const fc = getFillCanvas();
+    if (!fc) return;
+    snapshot();
+    fc.getContext('2d').clearRect(0, 0, fc.width, fc.height);
+  }
 
   /* ── pointer position ────────────────────────── */
   function getPos(e) {
@@ -245,27 +276,50 @@ export function useDrawing({ canvasRef, tool, color, brushSize, enabled = true }
   }
 
   /* ── flood fill ──────────────────────────────── */
-  function floodFill(cx, canvas, startX, startY, fillColor) {
+  /**
+   * Flood-fill `canvas` (via `cx`) starting from (startX, startY).
+   * When `sampleCanvas` is provided the seed colour is sampled from
+   * it instead — useful when painting the fill onto a separate layer
+   * while the outline lives on the draw canvas.
+   */
+  function floodFill(cx, canvas, startX, startY, fillColor, sampleCtx, sampleCanvas) {
     startX = Math.round(startX); startY = Math.round(startY);
+
+    // Sample source for the seed colour (may differ from the paint target)
+    const srcCtx    = sampleCtx    ?? cx;
+    const srcCanvas = sampleCanvas ?? canvas;
+    const srcData   = srcCtx.getImageData(0, 0, srcCanvas.width, srcCanvas.height).data;
+    const sw = srcCanvas.width;
+
     const imgData = cx.getImageData(0, 0, canvas.width, canvas.height);
     const data    = imgData.data;
     const w       = canvas.width;
     const h       = canvas.height;
 
-    function idx(x, y) { return (y * w + x) * 4; }
-    const si = idx(startX, startY);
-    const [sr, sg, sb, sa] = [data[si], data[si+1], data[si+2], data[si+3]];
+    function idx(x, y)    { return (y * w  + x) * 4; }
+    function srcIdx(x, y) { return (y * sw + x) * 4; }
+
+    // Clamp start coords to valid range
+    startX = Math.max(0, Math.min(w - 1, startX));
+    startY = Math.max(0, Math.min(h - 1, startY));
+
+    const si = srcIdx(startX, startY);
+    const [sr, sg, sb, sa] = [srcData[si], srcData[si+1], srcData[si+2], srcData[si+3]];
 
     const fc = hexToRgba(fillColor);
-    if (sr === fc.r && sg === fc.g && sb === fc.b) return;
+    // If clicking on the fill canvas itself, also guard against re-filling same colour
+    const di = idx(startX, startY);
+    if (data[di] === fc.r && data[di+1] === fc.g && data[di+2] === fc.b && data[di+3] === 255) return;
 
-    const TOLERANCE = 28;
-    function matches(i) {
+    // Raised tolerance (was 28) to handle anti-aliased SVG outline edges
+    const TOLERANCE = 40;
+    function matches(x, y) {
+      const i = srcIdx(x, y);
       return (
-        Math.abs(data[i]   - sr) <= TOLERANCE &&
-        Math.abs(data[i+1] - sg) <= TOLERANCE &&
-        Math.abs(data[i+2] - sb) <= TOLERANCE &&
-        Math.abs(data[i+3] - sa) <= TOLERANCE
+        Math.abs(srcData[i]   - sr) <= TOLERANCE &&
+        Math.abs(srcData[i+1] - sg) <= TOLERANCE &&
+        Math.abs(srcData[i+2] - sb) <= TOLERANCE &&
+        Math.abs(srcData[i+3] - sa) <= TOLERANCE
       );
     }
 
@@ -280,12 +334,12 @@ export function useDrawing({ canvasRef, tool, color, brushSize, enabled = true }
       if (visited[y * w + x]) continue;
 
       let left = x, right = x;
-      while (left  > 0    && !visited[y * w + (left-1)]  && matches(idx(left-1,  y))) left--;
-      while (right < w-1  && !visited[y * w + (right+1)] && matches(idx(right+1, y))) right++;
+      while (left  > 0    && !visited[y * w + (left-1)]  && matches(left-1,  y)) left--;
+      while (right < w-1  && !visited[y * w + (right+1)] && matches(right+1, y)) right++;
 
       for (let cx2 = left; cx2 <= right; cx2++) {
         const i2 = idx(cx2, y);
-        if (!visited[y * w + cx2] && matches(i2)) {
+        if (!visited[y * w + cx2] && matches(cx2, y)) {
           data[i2]   = fc.r;
           data[i2+1] = fc.g;
           data[i2+2] = fc.b;
@@ -295,10 +349,34 @@ export function useDrawing({ canvasRef, tool, color, brushSize, enabled = true }
       }
       // enqueue adjacent rows
       for (let cx2 = left; cx2 <= right; cx2++) {
-        if (y > 0   && !visited[(y-1) * w + cx2] && matches(idx(cx2, y-1))) queue.push([cx2, y-1]);
-        if (y < h-1 && !visited[(y+1) * w + cx2] && matches(idx(cx2, y+1))) queue.push([cx2, y+1]);
+        if (y > 0   && !visited[(y-1) * w + cx2] && matches(cx2, y-1)) queue.push([cx2, y-1]);
+        if (y < h-1 && !visited[(y+1) * w + cx2] && matches(cx2, y+1)) queue.push([cx2, y+1]);
       }
     }
+
+    // 1-pixel dilation pass: fill any remaining anti-aliased border pixels
+    // adjacent to newly-filled cells so there are no fringe gaps.
+    for (let y = 1; y < h - 1; y++) {
+      for (let x = 1; x < w - 1; x++) {
+        if (visited[y * w + x]) continue;
+        if (
+          visited[y * w + (x-1)] ||
+          visited[y * w + (x+1)] ||
+          visited[(y-1) * w + x] ||
+          visited[(y+1) * w + x]
+        ) {
+          const i = idx(x, y);
+          // Only overwrite semi-transparent / near-white border pixels
+          if (data[i+3] < 200 || (data[i] > 200 && data[i+1] > 200 && data[i+2] > 200)) {
+            data[i]   = fc.r;
+            data[i+1] = fc.g;
+            data[i+2] = fc.b;
+            data[i+3] = 255;
+          }
+        }
+      }
+    }
+
     cx.putImageData(imgData, 0, 0);
   }
 
@@ -307,15 +385,35 @@ export function useDrawing({ canvasRef, tool, color, brushSize, enabled = true }
     if (!enabledRef.current) return;
     e.preventDefault();
     const pos = getPos(e);
-    const cx  = getCtx();
-    if (!cx) return;
 
     if (toolRef.current === TOOLS.FILL) {
+      const fc   = getFillCanvas();
+      const target = fc ?? getCanvas();
+      const targetCtx = target.getContext('2d');
+
+      // When a fill canvas is available, sample the colour from a merged
+      // read of both draw + fill layers so the tolerance check is accurate.
+      let sampleCtx = targetCtx;
+      if (fc) {
+        // For colour sampling we read from the draw canvas (the SVG outline
+        // is stamped there) so tolerance works against the actual outline colour.
+        const drawCtx = getCtx();
+        sampleCtx = drawCtx ?? targetCtx;
+      }
+
       snapshot();
-      floodFill(cx, getCanvas(), pos.x, pos.y, colorRef.current);
+      setIsFilling(true);
+      // Use setTimeout(0) to allow React to re-render the spinner before the
+      // synchronous flood-fill blocks the main thread.
+      setTimeout(() => {
+        floodFill(targetCtx, target, pos.x, pos.y, colorRef.current, sampleCtx, getCanvas());
+        setIsFilling(false);
+      }, 0);
       return;
     }
 
+    const cx = getCtx();
+    if (!cx) return;
     snapshot();
     drawing.current = true;
     lastPos.current = pos;
@@ -341,12 +439,17 @@ export function useDrawing({ canvasRef, tool, color, brushSize, enabled = true }
   /* ── attach events ───────────────────────────── */
   // Handlers read tool/color/brushSize via refs so the listeners only need
   // to be registered once per canvas instance, not on every render.
+  // Refs are updated via useLayoutEffect (not during render) to satisfy
+  // the react-hooks/refs lint rule.
   const onStartRef = useRef(onStart);
   const onMoveRef  = useRef(onMove);
   const onEndRef   = useRef(onEnd);
-  onStartRef.current = onStart;
-  onMoveRef.current  = onMove;
-  onEndRef.current   = onEnd;
+
+  useEffect(() => {
+    onStartRef.current = onStart;
+    onMoveRef.current  = onMove;
+    onEndRef.current   = onEnd;
+  });
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -366,25 +469,7 @@ export function useDrawing({ canvasRef, tool, color, brushSize, enabled = true }
     };
   }, [canvasRef]); // only re-attach when the canvas element changes
 
-  return { undo, redo, clearCanvas };
+  return { undo, redo, clearCanvas, clearFillLayer, isFilling };
 }
 
-/* ── colour helpers ───────────────────────────── */
-function hexToRgba(hex) {
-  const c = hex.replace('#', '');
-  const n = parseInt(c.length === 3
-    ? c.split('').map(x => x+x).join('') : c, 16);
-  return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
-}
-function colorAlpha(hex, alpha) {
-  const { r, g, b } = hexToRgba(hex);
-  return `rgba(${r},${g},${b},${alpha})`;
-}
-function lighten(hex, amount) {
-  const { r, g, b } = hexToRgba(hex);
-  return `rgb(${Math.min(255,r+Math.round(255*amount))},${Math.min(255,g+Math.round(255*amount))},${Math.min(255,b+Math.round(255*amount))})`;
-}
-function darken(hex, amount) {
-  const { r, g, b } = hexToRgba(hex);
-  return `rgb(${Math.max(0,r-Math.round(255*amount))},${Math.max(0,g-Math.round(255*amount))},${Math.max(0,b-Math.round(255*amount))})`;
-}
+/* ── colour helpers are in ../utils/colorUtils.js ── */

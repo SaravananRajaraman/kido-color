@@ -7,6 +7,7 @@ import Home              from './components/Home.jsx';
 import ColoringMode      from './components/ColoringMode.jsx';
 import TracingMode       from './components/TracingMode.jsx';
 import FreeDrawMode      from './components/FreeDrawMode.jsx';
+import AuthDebug         from './components/AuthDebug.jsx';
 import './styles/main.css';
 
 function ModeRouter() {
@@ -26,6 +27,7 @@ export default function App() {
       <main className="app-main">
         <ModeRouter />
       </main>
+      <AuthDebug />
     </div>
   );
 }

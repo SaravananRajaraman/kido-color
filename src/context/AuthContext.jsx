@@ -3,9 +3,10 @@
  *
  * Firebase Google auth state. Works gracefully when Firebase is not
  * configured (isConfigured === false) by keeping user === null.
+ * Handles both popup and redirect sign-in flows.
  */
 import { createContext, useContext, useState, useEffect } from 'react';
-import { onAuthStateChanged }   from '../firebase/authService.js';
+import { onAuthStateChanged, consumeRedirectResult } from '../firebase/authService.js';
 import { isConfigured }         from '../firebase/config.js';
 
 const AuthContext = createContext(null);
@@ -15,6 +16,9 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // Consume any pending redirect sign-in result (mobile fallback)
+    consumeRedirectResult().catch(() => {});
+
     const unsub = onAuthStateChanged(u => {
       setUser(u);
       setLoading(false);
