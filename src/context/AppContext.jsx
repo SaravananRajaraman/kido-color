@@ -2,9 +2,10 @@
  * context/AppContext.jsx
  *
  * Global app state: current mode, selected tool, colour, brush size,
- * current letter, tracing style, coloring category.
+ * current letter, tracing style, coloring category, and progress tracking.
  */
 import { createContext, useContext, useState } from 'react';
+import { useProgress } from '../hooks/useProgress.js';
 
 const AppContext = createContext(null);
 
@@ -33,6 +34,8 @@ export function AppProvider({ children }) {
   const [panelOpen,     setPanelOpen]    = useState(false);
   const [saveOpen,      setSaveOpen]     = useState(false);
 
+  const { progress, markComplete, resetProgress, isCompleted, completedCount } = useProgress();
+
   function selectTool(t) {
     setTool(t);
     setPanelOpen(false); // auto-hide panel on tool select
@@ -49,6 +52,12 @@ export function AppProvider({ children }) {
       category, setCategory,
       panelOpen, setPanelOpen,
       saveOpen, setSaveOpen,
+      // progress tracking
+      progress,
+      markComplete,
+      resetProgress,
+      isCompleted,
+      completedCount,
     }}>
       {children}
     </AppContext.Provider>

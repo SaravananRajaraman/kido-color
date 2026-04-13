@@ -21,7 +21,8 @@ import SaveDialog                   from './SaveDialog.jsx';
 const LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
 
 export default function ColoringMode() {
-  const { tool, color, brushSize, letter, setLetter, category, setCategory, panelOpen, setPanelOpen } = useApp();
+  const { tool, color, brushSize, letter, setLetter, category, setCategory, panelOpen, setPanelOpen,
+          markComplete, isCompleted } = useApp();
 
   const svgCanvasRef  = useRef(null);   // bottom: SVG outline
   const fillCanvasRef = useRef(null);   // middle: fill layer
@@ -143,11 +144,22 @@ export default function ColoringMode() {
     }
   }, [letter, category]);
 
+  const filteredImages = COLORING_IMAGES.filter(i => i.category === category);
+  const lettersInCat   = [...new Set(filteredImages.map(i => i.letter))];
+
   function handleClear() {
     const c  = drawCanvasRef.current;
     if (c) c.getContext('2d').clearRect(0, 0, c.width, c.height);
     const f  = fillCanvasRef.current;
     if (f) f.getContext('2d').clearRect(0, 0, f.width, f.height);
+  }
+
+  function handleMarkDone() {
+    markComplete('color', letter);
+    // Advance to next available letter in category
+    const idx  = lettersInCat.indexOf(letter);
+    const next = lettersInCat[(idx + 1) % lettersInCat.length];
+    if (next && next !== letter) setLetter(next);
   }
 
   function handleDownload() {
@@ -178,9 +190,6 @@ export default function ColoringMode() {
     return { current: merged };
   }
 
-  const filteredImages = COLORING_IMAGES.filter(i => i.category === category);
-  const lettersInCat   = [...new Set(filteredImages.map(i => i.letter))];
-
   return (
     <section className="mode-section" aria-label="Coloring mode">
       {/* selector bar */}
@@ -203,12 +212,13 @@ export default function ColoringMode() {
           {lettersInCat.map(l => (
             <button
               key={l}
-              className={`letter-btn${letter === l ? ' active' : ''}`}
+              className={`letter-btn${letter === l ? ' active' : ''}${isCompleted('color', l) ? ' completed' : ''}`}
               onClick={() => setLetter(l)}
-              aria-label={`Letter ${l}`}
+              aria-label={`Letter ${l}${isCompleted('color', l) ? ' (colored)' : ''}`}
               aria-pressed={letter === l}
             >
               {l}
+              {isCompleted('color', l) && <span className="letter-check" aria-hidden="true">✓</span>}
             </button>
           ))}
         </div>
@@ -240,6 +250,7 @@ export default function ColoringMode() {
         onRedo={redo}
         onClear={handleClear}
         clearLabel="Clear Paint"
+        onDone={handleMarkDone}
         onSave={() => { getMergedCanvas(); setShowSave(true); }}
         onDownload={handleDownload}
       />

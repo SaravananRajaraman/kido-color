@@ -23,6 +23,10 @@ const SIZE_LIST = [
   { id: SIZES.XL, label:'XL' },
 ];
 
+// Brush size slider range (pixels)
+const BRUSH_MIN = 1;
+const BRUSH_MAX = 40;
+
 export default function ToolPanel() {
   const { tool, setTool, brushSize, setBrushSize, panelOpen, setPanelOpen } = useApp();
 
@@ -67,8 +71,19 @@ export default function ToolPanel() {
 
         {/* Brush size */}
         <div className="panel-section">
-          <p className="panel-title">📏 Brush Size</p>
-          <div className="size-options" role="group" aria-label="Brush size">
+          <p className="panel-title">📏 Brush Size <span className="brush-size-value">{brushSize}px</span></p>
+          {/* Continuous slider */}
+          <input
+            type="range"
+            className="brush-slider"
+            min={BRUSH_MIN}
+            max={BRUSH_MAX}
+            value={brushSize}
+            onChange={e => setBrushSize(Number(e.target.value))}
+            aria-label={`Brush size: ${brushSize} pixels`}
+          />
+          {/* Quick-pick presets */}
+          <div className="size-options" role="group" aria-label="Brush size presets">
             {SIZE_LIST.map(s => (
               <button
                 key={s.id}

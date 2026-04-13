@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="192" height="192" viewBox="0 0 192 192">
+  <rect width="192" height="192" rx="42" fill="#FF6B6B"/>
+  <!-- Palette base -->
+  <ellipse cx="96" cy="104" rx="54" ry="44" fill="#fff" opacity="0.95"/>
+  <!-- Color dots on palette -->
+  <circle cx="70" cy="98" r="12" fill="#FF9800"/>
+  <circle cx="96" cy="88" r="12" fill="#4ECDC4"/>
+  <circle cx="122" cy="98" r="12" fill="#A855F7"/>
+  <!-- Palette thumb hole -->
+  <circle cx="80" cy="120" r="9" fill="#FF6B6B"/>
+  <!-- Paintbrush -->
+  <rect x="122" y="54" width="10" height="46" rx="5" fill="#FFF9C4" transform="rotate(30 127 77)"/>
+  <rect x="128" y="48" width="10" height="18" rx="3" fill="#4ECDC4" transform="rotate(30 133 57)"/>
+</svg>

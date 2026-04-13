@@ -30,8 +30,13 @@ const STYLES  = [
 // Font stack: Fredoka One (Google Fonts) → Arial Rounded MT Bold → sans-serif
 const GUIDE_FONT = '"Fredoka One","Arial Rounded MT Bold",Arial,sans-serif';
 
+// Minimum fraction of guide pixels that must be covered to trigger completion.
+// ~65% gives kids a meaningful challenge without being frustrating.
+const COVERAGE_THRESHOLD = 0.65;
+
 export default function TracingMode() {
-  const { tool, color, brushSize, letter, setLetter, traceStyle, setTraceStyle, setPanelOpen } = useApp();
+  const { tool, color, brushSize, letter, setLetter, traceStyle, setTraceStyle, setPanelOpen,
+          markComplete, isCompleted } = useApp();
 
   const bgCanvasRef   = useRef(null);   // lined paper + guide letter
   const drawCanvasRef = useRef(null);   // user strokes
@@ -187,8 +192,11 @@ export default function TracingMode() {
       }
     }
 
-    if (guide > 0 && covered / guide > 0.35) {
-      if (!celebrate) setCelebrate(true);
+    if (guide > 0 && covered / guide > COVERAGE_THRESHOLD) {
+      if (!celebrate) {
+        setCelebrate(true);
+        markComplete('trace', letter);
+      }
     }
   }
 
@@ -245,12 +253,13 @@ export default function TracingMode() {
           {LETTERS.map(l => (
             <button
               key={l}
-              className={`letter-btn${letter === l ? ' active' : ''}`}
+              className={`letter-btn${letter === l ? ' active' : ''}${isCompleted('trace', l) ? ' completed' : ''}`}
               onClick={() => { resetDrawLayer(); setLetter(l); }}
-              aria-label={`Letter ${l}`}
+              aria-label={`Letter ${l}${isCompleted('trace', l) ? ' (completed)' : ''}`}
               aria-pressed={letter === l}
             >
               {l}
+              {isCompleted('trace', l) && <span className="letter-check" aria-hidden="true">✓</span>}
             </button>
           ))}
         </div>

@@ -1,0 +1,32 @@
+{
+  "name": "Kido Color — Learn & Draw!",
+  "short_name": "Kido Color",
+  "description": "A fun, kid-friendly coloring, tracing and drawing app for ages 3–6",
+  "start_url": "/kido-color/",
+  "scope": "/kido-color/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#FFFDE7",
+  "theme_color": "#FF6B6B",
+  "categories": ["education", "kids", "games"],
+  "icons": [
+    {
+      "src": "/kido-color/icon-192.svg",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/kido-color/icon-512.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/kido-color/favicon.svg",
+      "sizes": "48x48",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}
