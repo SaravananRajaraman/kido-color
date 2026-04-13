@@ -133,10 +133,12 @@ export function useKonvaDrawing({
   }, [drawLayerRef, fillLayerRef]);
 
   /* ── pointer position ──────────────────────────── */
+  // Konva updates stage._pointerPosition before calling any event handler,
+  // so getPointerPosition() always reflects the current event's coordinates
+  // (already transformed for stage scale/offset/pixel-ratio).
   function getPos() {
     const stage = stageRef?.current;
     if (!stage) return { x: 0, y: 0 };
-    // Use Konva's pointer position so scaling / offset are handled.
     const pos = stage.getPointerPosition();
     return pos ?? { x: 0, y: 0 };
   }
@@ -367,7 +369,7 @@ export function useKonvaDrawing({
     if (!enabledRef.current) return;
     konvaEvent.evt.preventDefault();
 
-    const pos = getPos(konvaEvent);
+    const pos = getPos();
 
     if (toolRef.current === TOOLS.FILL) {
       const fc  = getFillCanvas();
@@ -407,7 +409,7 @@ export function useKonvaDrawing({
   const handlePointerMove = useCallback((konvaEvent) => {
     if (!drawing.current || !enabledRef.current) return;
     konvaEvent.evt.preventDefault();
-    const pos = getPos(konvaEvent);
+    const pos = getPos();
     const cx  = getDrawCtx();
     if (!cx) return;
     drawSegment(cx, lastPos.current, pos, toolRef.current, colorRef.current, sizeRef.current);
