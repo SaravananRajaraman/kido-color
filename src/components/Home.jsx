@@ -4,7 +4,10 @@
 import { useApp, MODES } from '../context/AppContext.jsx';
 
 export default function Home() {
-  const { setMode } = useApp();
+  const { setMode, completedCount, resetProgress } = useApp();
+
+  const traceCount = completedCount('trace');
+  const colorCount = completedCount('color');
 
   return (
     <section className="home-hero mode-section" aria-label="Choose a mode">
@@ -22,6 +25,11 @@ export default function Home() {
           <span className="card-emoji">🖍️</span>
           <span className="card-title">Color</span>
           <span className="card-subtitle">A–Z Animals &amp; more</span>
+          {colorCount > 0 && (
+            <span className="card-progress" aria-label={`${colorCount} letters colored`}>
+              ⭐ {colorCount}/26
+            </span>
+          )}
         </button>
 
         <button
@@ -32,6 +40,11 @@ export default function Home() {
           <span className="card-emoji">✏️</span>
           <span className="card-title">Trace</span>
           <span className="card-subtitle">A–Z Letters</span>
+          {traceCount > 0 && (
+            <span className="card-progress" aria-label={`${traceCount} letters traced`}>
+              ⭐ {traceCount}/26
+            </span>
+          )}
         </button>
 
         <button
@@ -44,6 +57,16 @@ export default function Home() {
           <span className="card-subtitle">Free canvas</span>
         </button>
       </div>
+
+      {(traceCount > 0 || colorCount > 0) && (
+        <button
+          className="reset-progress-btn"
+          onClick={() => resetProgress()}
+          aria-label="Reset all progress"
+        >
+          🔄 Reset Progress
+        </button>
+      )}
     </section>
   );
 }
