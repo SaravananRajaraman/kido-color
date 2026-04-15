@@ -65,15 +65,11 @@ export default function TracingMode() {
   const drawGuide = useCallback(() => {
     const layer = bgLayerRef.current;
     if (!layer) return;
-    const konvaCanvas = layer.getCanvas?.();
-    const canvas = konvaCanvas?.getElement?.();
+    const canvas = layer.getCanvas?.()?.getElement?.();
     if (!canvas || !canvas.width) return;
 
-    // Use CSS pixel dimensions: the raw context has scale(pixelRatio) already applied
-    const pixelRatio = konvaCanvas.pixelRatio || 1;
     const cx = canvas.getContext('2d');
-    const w = canvas.width  / pixelRatio;
-    const h = canvas.height / pixelRatio;
+    const { width: w, height: h } = canvas;
 
     // cream lined paper
     cx.fillStyle = '#FFFDE7';
@@ -135,6 +131,8 @@ export default function TracingMode() {
     cx.fillStyle = '#90A4AE';
     cx.textAlign = 'center';
     cx.fillText(`Trace the letter ${letter}`, w / 2, h - 14);
+
+    layer.batchDraw();
   }, [letter, traceStyle]);
 
   /* ── responsive resize ─────────────────────────── */
@@ -294,7 +292,7 @@ export default function TracingMode() {
               onPointerUp={onPointerUp}
               onPointerLeave={handlePointerUp}
             >
-              <Layer ref={bgLayerRef}   listening={false} clearBeforeDraw={false} />
+              <Layer ref={bgLayerRef}   listening={false} />
               <Layer ref={drawLayerRef} />
             </Stage>
           )}
