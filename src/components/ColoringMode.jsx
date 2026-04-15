@@ -52,7 +52,8 @@ export default function ColoringMode() {
   const stampSvg = useCallback(() => {
     const layer = bgLayerRef.current;
     if (!layer) return;
-    const canvas = layer.getCanvas?.()?.getElement?.();
+    const konvaCanvas = layer.getCanvas?.();
+    const canvas = konvaCanvas?.getElement?.();
     if (!canvas || !canvas.width) return;
 
     const image = COLORING_IMAGES.find(
@@ -60,10 +61,14 @@ export default function ColoringMode() {
     ) ?? COLORING_IMAGES.find(img => img.letter === letter);
     if (!image) return;
 
+    // Use CSS pixel dimensions: the raw context has scale(pixelRatio) already applied
+    const pixelRatio = konvaCanvas.pixelRatio || 1;
     const ctx = canvas.getContext('2d');
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    const canvasW = canvas.width  / pixelRatio;
+    const canvasH = canvas.height / pixelRatio;
+    ctx.clearRect(0, 0, canvasW, canvasH);
     ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillRect(0, 0, canvasW, canvasH);
 
     function drawLabel() {
       ctx.save();
@@ -71,21 +76,20 @@ export default function ColoringMode() {
       ctx.fillStyle    = '#1C1C1C';
       ctx.textAlign    = 'center';
       ctx.textBaseline = 'bottom';
-      ctx.fillText(`${image.letter} is for ${image.name}`, canvas.width / 2, canvas.height - 6);
+      ctx.fillText(`${image.letter} is for ${image.name}`, canvasW / 2, canvasH - 6);
       ctx.restore();
-      layer.batchDraw();
     }
 
     function renderImg(img) {
       const pad   = 20;
       const scale = Math.min(
-        (canvas.width  - pad * 2) / img.naturalWidth,
-        (canvas.height - pad * 2) / img.naturalHeight,
+        (canvasW - pad * 2) / img.naturalWidth,
+        (canvasH - pad * 2) / img.naturalHeight,
       );
       const dw = img.naturalWidth  * scale;
       const dh = img.naturalHeight * scale;
-      const dx = (canvas.width  - dw) / 2;
-      const dy = (canvas.height - dh) / 2;
+      const dx = (canvasW - dw) / 2;
+      const dy = (canvasH - dh) / 2;
       ctx.drawImage(img, dx, dy, dw, dh);
       drawLabel();
     }
@@ -254,7 +258,7 @@ export default function ColoringMode() {
               onPointerUp={handlePointerUp}
               onPointerLeave={handlePointerUp}
             >
-              <Layer ref={bgLayerRef}   listening={false} />
+              <Layer ref={bgLayerRef}   listening={false} clearBeforeDraw={false} />
               <Layer ref={fillLayerRef} listening={false} />
               <Layer ref={drawLayerRef} />
             </Stage>
