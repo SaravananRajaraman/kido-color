@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" href="/kido-color/favicon.svg" type="image/svg+xml" />
+    <link rel="manifest" href="/kido-color/manifest.json" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="description" content="Kido Color — a fun, kid-friendly coloring, tracing and drawing app for ages 3–6" />
+    <meta name="theme-color" content="#FF6B6B" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Kido Color" />
+    <link rel="apple-touch-icon" href="/kido-color/icon-192.svg" />
+    <title>🎨 Kido Color — Learn &amp; Draw!</title>
+    <!-- Kid-friendly rounded font for tracing guides -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Fredoka+One&display=swap" rel="stylesheet" />
+    <script type="module" crossorigin src="/kido-color/assets/index-B1CcXUPR.js"></script>
+    <link rel="modulepreload" crossorigin href="/kido-color/assets/firebase-fO9-uGxj.js">
+    <link rel="modulepreload" crossorigin href="/kido-color/assets/rolldown-runtime-Cr0BHlHC.js">
+    <link rel="modulepreload" crossorigin href="/kido-color/assets/react-BjOC_P5G.js">
+    <link rel="stylesheet" crossorigin href="/kido-color/assets/index-B0L9oZUi.css">
+  </head>
+  <body>
+    <div id="root"></div>
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/kido-color/sw.js');
+        });
+      }
+    </script>
+  </body>
+</html>
