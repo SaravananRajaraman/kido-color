@@ -27,7 +27,7 @@ import { hexToRgba, colorAlpha, lighten, darken } from '../utils/colorUtils.js';
 
 const UNDO_LIMIT = 25;
 
-export function useDrawing({ canvasRef, fillCanvasRef, tool, color, brushSize, enabled = true }) {
+export function useDrawing({ canvasRef, fillCanvasRef, outlineCanvasRef, tool, color, brushSize, enabled = true }) {
   const undoStack = useRef([]);
   const redoStack = useRef([]);
   const drawing   = useRef(false);
@@ -37,16 +37,18 @@ export function useDrawing({ canvasRef, fillCanvasRef, tool, color, brushSize, e
 
   // Keep mutable refs for tool/color/brushSize so stable event handlers
   // always read the latest values without needing re-registration.
-  const toolRef         = useRef(tool);
-  const colorRef        = useRef(color);
-  const brushSizeRef    = useRef(brushSize);
-  const enabledRef      = useRef(enabled);
-  const fillCanvasRefMut = useRef(fillCanvasRef);
-  useEffect(() => { toolRef.current         = tool;          }, [tool]);
-  useEffect(() => { colorRef.current        = color;         }, [color]);
-  useEffect(() => { brushSizeRef.current    = brushSize;     }, [brushSize]);
-  useEffect(() => { enabledRef.current      = enabled;       }, [enabled]);
-  useEffect(() => { fillCanvasRefMut.current = fillCanvasRef; }, [fillCanvasRef]);
+  const toolRef              = useRef(tool);
+  const colorRef             = useRef(color);
+  const brushSizeRef         = useRef(brushSize);
+  const enabledRef           = useRef(enabled);
+  const fillCanvasRefMut     = useRef(fillCanvasRef);
+  const outlineCanvasRefMut  = useRef(outlineCanvasRef);
+  useEffect(() => { toolRef.current             = tool;             }, [tool]);
+  useEffect(() => { colorRef.current            = color;            }, [color]);
+  useEffect(() => { brushSizeRef.current        = brushSize;        }, [brushSize]);
+  useEffect(() => { enabledRef.current          = enabled;          }, [enabled]);
+  useEffect(() => { fillCanvasRefMut.current    = fillCanvasRef;    }, [fillCanvasRef]);
+  useEffect(() => { outlineCanvasRefMut.current = outlineCanvasRef; }, [outlineCanvasRef]);
 
   /* ── helpers ─────────────────────────────────── */
   function getCanvas() { return canvasRef.current; }
@@ -58,6 +60,7 @@ export function useDrawing({ canvasRef, fillCanvasRef, tool, color, brushSize, e
     ctx.current = c.getContext('2d');
     return ctx.current;
   }
+  function getOutlineCanvas() { return outlineCanvasRefMut.current?.current ?? null; }
 
   function snapshot() {
     const c = getCanvas();
@@ -387,26 +390,27 @@ export function useDrawing({ canvasRef, fillCanvasRef, tool, color, brushSize, e
     const pos = getPos(e);
 
     if (toolRef.current === TOOLS.FILL) {
-      const fc   = getFillCanvas();
-      const target = fc ?? getCanvas();
+      const fc  = getFillCanvas();
+      const oc  = getOutlineCanvas();
+      const target    = fc ?? getCanvas();
       const targetCtx = target.getContext('2d');
 
-      // When a fill canvas is available, sample the colour from a merged
-      // read of both draw + fill layers so the tolerance check is accurate.
-      let sampleCtx = targetCtx;
-      if (fc) {
-        // For colour sampling we read from the draw canvas (the SVG outline
-        // is stamped there) so tolerance works against the actual outline colour.
-        const drawCtx = getCtx();
-        sampleCtx = drawCtx ?? targetCtx;
+      // Prefer the outline canvas (SVG layer) as the pixel-sample source so
+      // the flood-fill reads actual shape boundaries rather than an empty canvas.
+      let sampleCtx    = null;
+      let sampleCanvas = null;
+      if (oc) {
+        sampleCtx    = oc.getContext('2d');
+        sampleCanvas = oc;
+      } else if (fc) {
+        sampleCtx    = getCtx();
+        sampleCanvas = getCanvas();
       }
 
       snapshot();
       setIsFilling(true);
-      // Use setTimeout(0) to allow React to re-render the spinner before the
-      // synchronous flood-fill blocks the main thread.
       setTimeout(() => {
-        floodFill(targetCtx, target, pos.x, pos.y, colorRef.current, sampleCtx, getCanvas());
+        floodFill(targetCtx, target, pos.x, pos.y, colorRef.current, sampleCtx, sampleCanvas);
         setIsFilling(false);
       }, 0);
       return;

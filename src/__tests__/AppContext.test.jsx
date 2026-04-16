@@ -34,11 +34,6 @@ describe('AppContext initial state', () => {
     const { result } = renderHook(() => useApp(), { wrapper });
     expect(result.current.letter).toBe('A');
   });
-
-  it('defaults category to animals', () => {
-    const { result } = renderHook(() => useApp(), { wrapper });
-    expect(result.current.category).toBe('animals');
-  });
 });
 
 describe('AppContext setters', () => {
@@ -73,18 +68,6 @@ describe('AppContext setters', () => {
     const { result } = renderHook(() => useApp(), { wrapper });
     act(() => result.current.setLetter('Z'));
     expect(result.current.letter).toBe('Z');
-  });
-
-  it('setCategory changes the category', () => {
-    const { result } = renderHook(() => useApp(), { wrapper });
-    act(() => result.current.setCategory('vehicles'));
-    expect(result.current.category).toBe('vehicles');
-  });
-
-  it('setTraceStyle changes the tracing style', () => {
-    const { result } = renderHook(() => useApp(), { wrapper });
-    act(() => result.current.setTraceStyle('faint'));
-    expect(result.current.traceStyle).toBe('faint');
   });
 });
 

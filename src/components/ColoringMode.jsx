@@ -4,47 +4,57 @@
  * A–Z coloring with SVG outline illustrations.
  * Three canvas layers (bottom to top):
  *   1. svgCanvasRef  – the SVG outline (read-only, pointer-events:none)
- *   2. fillCanvasRef – bucket-fill colour regions (separate from strokes)
- *   3. drawCanvasRef – pencil / brush strokes
+ *   2. fillCanvasRef – bucket-fill colour regions
+ *   3. drawCanvasRef – unused (kept for undo/redo stack compatibility)
  *
- * On letter/category change the SVG is re-stamped and both paint layers
- * are cleared.
+ * Tool is locked to FILL.  Color is chosen from the bottom ColorBar.
+ * Completion is detected automatically (~75% of white area filled)
+ * and can also be triggered with the "I'm Done! ⭐" button.
  */
 import { useRef, useEffect, useCallback, useState } from 'react';
-import { useApp }                   from '../context/AppContext.jsx';
-import { COLORING_IMAGES, CATEGORIES } from '../data/coloringImages.js';
-import { useDrawing }               from '../hooks/useDrawing.js';
-import ToolPanel                    from './ToolPanel.jsx';
-import ActionBar                    from './ActionBar.jsx';
-import SaveDialog                   from './SaveDialog.jsx';
+import { useApp }         from '../context/AppContext.jsx';
+import { COLORING_IMAGES } from '../data/coloringImages.js';
+import { TOOLS }          from '../context/AppContext.jsx';
+import { useDrawing }     from '../hooks/useDrawing.js';
+import ColorBar           from './ColorBar.jsx';
+import ActionBar          from './ActionBar.jsx';
+import SaveDialog         from './SaveDialog.jsx';
+import Confetti           from './Confetti.jsx';
 
 const LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
+// Fraction of originally-white SVG pixels that must be covered to auto-complete
+const FILL_THRESHOLD = 0.75;
 
 export default function ColoringMode() {
-  const { tool, color, brushSize, letter, setLetter, category, setCategory, panelOpen, setPanelOpen,
-          markComplete, isCompleted } = useApp();
+  const { color, letter, setLetter, markComplete, isCompleted } = useApp();
 
   const svgCanvasRef  = useRef(null);   // bottom: SVG outline
   const fillCanvasRef = useRef(null);   // middle: fill layer
-  const drawCanvasRef = useRef(null);   // top: user strokes
+  const drawCanvasRef = useRef(null);   // top: (empty, for hook compat)
   const containerRef  = useRef(null);
 
-  const [showSave, setShowSave] = useState(false);
+  const [celebrate, setCelebrate] = useState(false);
+  const [showSave,  setShowSave]  = useState(false);
+
+  // Cache the set of white pixel indices from the SVG canvas so we don't
+  // recompute it on every pointer-up — only refresh when letter changes.
+  const whitePixelsRef = useRef(null);
 
   const { undo, redo, isFilling } = useDrawing({
-    canvasRef:     drawCanvasRef,
-    fillCanvasRef: fillCanvasRef,
-    tool, color, brushSize,
-    enabled: true,
+    canvasRef:        drawCanvasRef,
+    fillCanvasRef:    fillCanvasRef,
+    outlineCanvasRef: svgCanvasRef,
+    tool:             TOOLS.FILL,
+    color,
+    brushSize:        6,
+    enabled:          true,
   });
 
-  /* ── stamp SVG onto bottom canvas ─────────────── */
+  /* ── stamp SVG onto bottom canvas ──────────────────── */
   const stampSvg = useCallback(() => {
     const canvas = svgCanvasRef.current;
     if (!canvas || !canvas.width) return;
-    const image = COLORING_IMAGES.find(
-      img => img.letter === letter && img.category === category
-    ) ?? COLORING_IMAGES.find(img => img.letter === letter);
+    const image = COLORING_IMAGES.find(img => img.letter === letter);
     if (!image) return;
 
     const ctx = canvas.getContext('2d');
@@ -60,39 +70,24 @@ export default function ColoringMode() {
       ctx.textBaseline = 'bottom';
       ctx.fillText(`${image.letter} is for ${image.name}`, canvas.width / 2, canvas.height - 6);
       ctx.restore();
+      // Invalidate white-pixel cache
+      whitePixelsRef.current = null;
     }
 
-    // Support both inline SVG strings and path-based entries
-    if (image.path) {
-      const img = new Image();
-      img.onload = () => {
-        const pad   = 20;
-        const scale = Math.min(
-          (canvas.width  - pad * 2) / img.naturalWidth,
-          (canvas.height - pad * 2) / img.naturalHeight,
-        );
-        const dw = img.naturalWidth  * scale;
-        const dh = img.naturalHeight * scale;
-        const dx = (canvas.width  - dw) / 2;
-        const dy = (canvas.height - dh) / 2;
-        ctx.drawImage(img, dx, dy, dw, dh);
-        drawLabel();
-      };
-      img.src = image.path;
-    } else if (image.svg) {
+    if (image.svg) {
       const svgBlob = new Blob([image.svg], { type: 'image/svg+xml' });
       const url     = URL.createObjectURL(svgBlob);
       const img     = new Image();
       img.onload = () => {
-        const pad  = 20;
+        const pad   = 20;
         const scale = Math.min(
           (canvas.width  - pad * 2) / img.naturalWidth,
-          (canvas.height - pad * 2) / img.naturalHeight,
+          (canvas.height - pad * 2 - 30) / img.naturalHeight,
         );
         const dw = img.naturalWidth  * scale;
         const dh = img.naturalHeight * scale;
         const dx = (canvas.width  - dw) / 2;
-        const dy = (canvas.height - dh) / 2;
+        const dy = (canvas.height - dh) / 2 - 15;
         ctx.drawImage(img, dx, dy, dw, dh);
         drawLabel();
         URL.revokeObjectURL(url);
@@ -100,9 +95,9 @@ export default function ColoringMode() {
       img.onerror = () => URL.revokeObjectURL(url);
       img.src = url;
     }
-  }, [letter, category]);
+  }, [letter]);
 
-  /* ── resize canvases ─────────────────────────── */
+  /* ── resize canvases ───────────────────────────────── */
   useEffect(() => {
     function resize() {
       const c = containerRef.current;
@@ -111,55 +106,103 @@ export default function ColoringMode() {
       for (const ref of [svgCanvasRef, fillCanvasRef, drawCanvasRef]) {
         if (!ref.current) continue;
         const canvas = ref.current;
-        const ctx    = canvas.getContext('2d');
-        const imgData = (canvas === drawCanvasRef.current || canvas === fillCanvasRef.current)
-          ? ctx.getImageData(0, 0, canvas.width, canvas.height)
-          : null;
         canvas.width  = Math.round(width);
         canvas.height = Math.round(height);
-        if (imgData) {
-          const tmp  = document.createElement('canvas');
-          tmp.width  = imgData.width;
-          tmp.height = imgData.height;
-          tmp.getContext('2d').putImageData(imgData, 0, 0);
-          ctx.drawImage(tmp, 0, 0, canvas.width, canvas.height);
-        }
       }
       stampSvg();
     }
     const ro = new ResizeObserver(resize);
     if (containerRef.current) ro.observe(containerRef.current);
     return () => ro.disconnect();
-  }, [letter, category, stampSvg]);
+  }, [letter, stampSvg]);
 
-  /* re-stamp when letter or category changes */
-  useEffect(() => { stampSvg(); }, [stampSvg]);
-
-  /* clear paint layers when letter/category changes */
+  /* re-stamp + clear fill/draw layers when letter changes */
   useEffect(() => {
     for (const ref of [drawCanvasRef, fillCanvasRef]) {
       const c = ref.current;
       if (!c) continue;
       c.getContext('2d').clearRect(0, 0, c.width, c.height);
     }
-  }, [letter, category]);
+    whitePixelsRef.current = null;
+  }, [letter]);
 
-  const filteredImages = COLORING_IMAGES.filter(i => i.category === category);
-  const lettersInCat   = [...new Set(filteredImages.map(i => i.letter))];
+  useEffect(() => { stampSvg(); }, [stampSvg]);
 
+  /* ── build white-pixel cache from SVG canvas ────────── */
+  function buildWhitePixelCache() {
+    const canvas = svgCanvasRef.current;
+    if (!canvas) return null;
+    const { width, height } = canvas;
+    const data = canvas.getContext('2d').getImageData(0, 0, width, height).data;
+    const indices = [];
+    for (let i = 0; i < data.length; i += 4) {
+      if (data[i] > 240 && data[i + 1] > 240 && data[i + 2] > 240 && data[i + 3] > 200) {
+        indices.push(i);
+      }
+    }
+    return indices;
+  }
+
+  /* ── check fill coverage ────────────────────────────── */
+  function checkCompletion() {
+    if (celebrate) return;
+    const fillCanvas = fillCanvasRef.current;
+    if (!fillCanvas) return;
+
+    if (!whitePixelsRef.current) {
+      whitePixelsRef.current = buildWhitePixelCache();
+    }
+    const whiteIndices = whitePixelsRef.current;
+    if (!whiteIndices || whiteIndices.length === 0) return;
+
+    const fillData = fillCanvas.getContext('2d').getImageData(
+      0, 0, fillCanvas.width, fillCanvas.height,
+    ).data;
+
+    let covered = 0;
+    for (const i of whiteIndices) {
+      if (fillData[i + 3] > 30) covered++;
+    }
+
+    if (covered / whiteIndices.length >= FILL_THRESHOLD) {
+      triggerCompletion();
+    }
+  }
+
+  function triggerCompletion() {
+    setCelebrate(true);
+    markComplete('color', letter);
+  }
+
+  /* ── auto-check when a fill operation finishes ───────── */
+  const prevFillingRef = useRef(false);
+  useEffect(() => {
+    if (prevFillingRef.current && !isFilling) {
+      checkCompletion();
+    }
+    prevFillingRef.current = isFilling;
+  });
+
+  /* ── advance to next letter ─────────────────────────── */
+  function goNext() {
+    const idx  = LETTERS.indexOf(letter);
+    const next = LETTERS[(idx + 1) % 26];
+    setCelebrate(false);
+    setLetter(next);
+  }
+
+  /* ── UI handlers ────────────────────────────────────── */
   function handleClear() {
-    const c  = drawCanvasRef.current;
+    const c = drawCanvasRef.current;
     if (c) c.getContext('2d').clearRect(0, 0, c.width, c.height);
-    const f  = fillCanvasRef.current;
+    const f = fillCanvasRef.current;
     if (f) f.getContext('2d').clearRect(0, 0, f.width, f.height);
+    whitePixelsRef.current = null;
+    setCelebrate(false);
   }
 
   function handleMarkDone() {
-    markComplete('color', letter);
-    // Advance to next available letter in category
-    const idx  = lettersInCat.indexOf(letter);
-    const next = lettersInCat[(idx + 1) % lettersInCat.length];
-    if (next && next !== letter) setLetter(next);
+    triggerCompletion();
   }
 
   function handleDownload() {
@@ -176,7 +219,6 @@ export default function ColoringMode() {
     a.click();
   }
 
-  // Merged canvas ref for SaveDialog
   const mergedRef = useRef(null);
   function getMergedCanvas() {
     const merged = document.createElement('canvas');
@@ -190,30 +232,18 @@ export default function ColoringMode() {
     return { current: merged };
   }
 
+  const currentImage = COLORING_IMAGES.find(img => img.letter === letter);
+
   return (
     <section className="mode-section" aria-label="Coloring mode">
-      {/* selector bar */}
+      {/* letter selector */}
       <div className="selector-bar">
-        {/* category tabs */}
-        <div className="style-selector" role="group" aria-label="Category">
-          {CATEGORIES.map(cat => (
-            <button
-              key={cat}
-              className={`style-btn${category === cat ? ' active' : ''}`}
-              onClick={() => setCategory(cat)}
-              aria-pressed={category === cat}
-            >
-              {{animals:'🐾 Animals', vehicles:'🚗 Vehicles', nature:'🌿 Nature'}[cat]}
-            </button>
-          ))}
-        </div>
-        {/* letter strip */}
         <div className="letter-grid" role="group" aria-label="Choose a letter">
-          {lettersInCat.map(l => (
+          {LETTERS.map(l => (
             <button
               key={l}
               className={`letter-btn${letter === l ? ' active' : ''}${isCompleted('color', l) ? ' completed' : ''}`}
-              onClick={() => setLetter(l)}
+              onClick={() => { setCelebrate(false); setLetter(l); }}
               aria-label={`Letter ${l}${isCompleted('color', l) ? ' (colored)' : ''}`}
               aria-pressed={letter === l}
             >
@@ -227,22 +257,43 @@ export default function ColoringMode() {
       {/* canvas area */}
       <div className="canvas-area" ref={containerRef}>
         <div className="canvas-container">
-          <canvas ref={svgCanvasRef}  style={{ pointerEvents:'none' }} aria-hidden="true"/>
-          <canvas ref={fillCanvasRef} style={{ pointerEvents:'none' }} aria-hidden="true"/>
-          <canvas ref={drawCanvasRef} aria-label="Coloring canvas"/>
+          <canvas ref={svgCanvasRef}  style={{ pointerEvents: 'none' }} aria-hidden="true"/>
+          <canvas ref={fillCanvasRef} style={{ pointerEvents: 'none' }} aria-hidden="true"/>
+          <canvas ref={drawCanvasRef} aria-label="Coloring canvas" style={{ cursor: 'crosshair' }}/>
         </div>
+
         {isFilling && (
           <div className="fill-overlay" aria-live="polite" aria-label="Filling…">
-            <span className="spinner fill-spinner" />
+            <span className="spinner fill-spinner"/>
           </div>
         )}
-        <div
-          className={`tool-indicator${panelOpen ? '' : ' visible'}`}
-          aria-live="polite"
-        >
-          {tool === 'eraser' ? '🧹 Eraser' : `✏️ ${tool.charAt(0).toUpperCase()+tool.slice(1)}`}
-        </div>
+
+        {/* completion overlay */}
+        {celebrate && (
+          <>
+            <Confetti onDone={() => {}} />
+            <div className="completion-overlay">
+              <div className="completion-box">
+                <span className="completion-stars">⭐⭐⭐</span>
+                <p className="completion-text">
+                  Amazing! {letter} is for {currentImage?.name ?? letter}!
+                </p>
+                <div className="completion-actions">
+                  <button className="completion-btn" onClick={goNext}>
+                    Next Letter ➡
+                  </button>
+                  <button className="completion-btn completion-btn-retry" onClick={handleClear}>
+                    Color Again 🔄
+                  </button>
+                </div>
+              </div>
+            </div>
+          </>
+        )}
       </div>
+
+      {/* color palette bar */}
+      <ColorBar />
 
       {/* action bar */}
       <ActionBar
@@ -254,17 +305,7 @@ export default function ColoringMode() {
         onSave={() => { getMergedCanvas(); setShowSave(true); }}
         onDownload={handleDownload}
       />
-      <button
-        className="action-btn btn-tools"
-        style={{ position:'fixed', bottom:'72px', right:'12px', zIndex:200 }}
-        onClick={() => setPanelOpen(true)}
-        aria-label="Open tools panel"
-        aria-expanded={panelOpen}
-      >
-        🛠️ Tools
-      </button>
 
-      <ToolPanel />
       {showSave && <SaveDialog canvasRef={mergedRef} onClose={() => setShowSave(false)} />}
     </section>
   );

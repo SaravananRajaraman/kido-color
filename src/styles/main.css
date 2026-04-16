@@ -543,7 +543,65 @@ button {
   padding: 2px; cursor: pointer; background: none;
 }
 
-/* ─── Tracing completion overlay ────────────────────── */
+/* ─── Color Bar (bottom palette in Color Mode) ──────── */
+.color-bar {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  background: var(--surface);
+  border-top: 2px solid var(--border);
+  overflow-x: auto;
+  flex-shrink: 0;
+  /* Hide scrollbar but keep scrollability */
+  scrollbar-width: none;
+}
+.color-bar::-webkit-scrollbar { display: none; }
+
+.color-bar-swatch {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 3px solid transparent;
+  transition: transform .15s var(--ease-bounce), border-color .12s;
+  box-shadow: var(--shadow-sm);
+}
+.color-bar-swatch.active {
+  border-color: #fff;
+  outline: 3px solid var(--text);
+  transform: scale(1.22);
+  box-shadow: 0 4px 12px rgba(0,0,0,.28);
+}
+.color-bar-swatch:hover  { transform: scale(1.12); }
+.color-bar-swatch:active { transform: scale(.9); }
+
+.color-bar-custom {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  margin-left: 4px;
+}
+.color-bar-custom-label {
+  font-size: 18px;
+  font-weight: 900;
+  color: var(--text-muted);
+  line-height: 1;
+}
+.color-bar-custom input[type="color"] {
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 50%;
+  padding: 2px;
+  cursor: pointer;
+  background: none;
+}
+
+/* ─── Completion overlay (Color + Trace) ────────────── */
 .completion-overlay {
   position: absolute;
   inset: 0;

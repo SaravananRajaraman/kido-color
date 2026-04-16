@@ -2,11 +2,12 @@
  * components/FreeDrawMode.jsx — blank canvas free drawing
  */
 import { useRef, useEffect, useState } from 'react';
-import { useApp }     from '../context/AppContext.jsx';
-import { useDrawing } from '../hooks/useDrawing.js';
-import ToolPanel      from './ToolPanel.jsx';
-import ActionBar      from './ActionBar.jsx';
-import SaveDialog     from './SaveDialog.jsx';
+import { useApp }           from '../context/AppContext.jsx';
+import { useDrawing }       from '../hooks/useDrawing.js';
+import { getCursorStyle }   from '../utils/cursorUtils.js';
+import ToolPanel            from './ToolPanel.jsx';
+import ActionBar            from './ActionBar.jsx';
+import SaveDialog           from './SaveDialog.jsx';
 
 export default function FreeDrawMode() {
   const { tool, color, brushSize, panelOpen, setPanelOpen } = useApp();
@@ -57,7 +58,11 @@ export default function FreeDrawMode() {
     <section className="mode-section" aria-label="Free drawing mode">
       <div className="canvas-area" ref={containerRef}>
         <div className="canvas-container">
-          <canvas ref={canvasRef} aria-label="Free drawing canvas"/>
+          <canvas
+            ref={canvasRef}
+            aria-label="Free drawing canvas"
+            style={{ cursor: getCursorStyle(tool, brushSize) }}
+          />
         </div>
       </div>
 

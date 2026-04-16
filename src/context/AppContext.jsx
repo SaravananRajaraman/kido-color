@@ -2,7 +2,7 @@
  * context/AppContext.jsx
  *
  * Global app state: current mode, selected tool, colour, brush size,
- * current letter, tracing style, coloring category, and progress tracking.
+ * current letter, and progress tracking.
  */
 import { createContext, useContext, useState } from 'react';
 import { useProgress } from '../hooks/useProgress.js';
@@ -21,7 +21,6 @@ export const TOOLS = {
   ERASER:    'eraser',
 };
 export const SIZES  = { S: 3, M: 6, L: 12, XL: 22 };
-export const TRACE_STYLES = ['dotted','arrows','faint'];
 
 export function AppProvider({ children }) {
   const [mode,          setMode]         = useState(MODES.HOME);
@@ -29,8 +28,6 @@ export function AppProvider({ children }) {
   const [color,         setColor]        = useState('#FF0000');
   const [brushSize,     setBrushSize]    = useState(SIZES.M);
   const [letter,        setLetter]       = useState('A');
-  const [traceStyle,    setTraceStyle]   = useState('dotted');
-  const [category,      setCategory]     = useState('animals');
   const [panelOpen,     setPanelOpen]    = useState(false);
   const [saveOpen,      setSaveOpen]     = useState(false);
 
@@ -48,8 +45,6 @@ export function AppProvider({ children }) {
       color, setColor,
       brushSize, setBrushSize,
       letter, setLetter,
-      traceStyle, setTraceStyle,
-      category, setCategory,
       panelOpen, setPanelOpen,
       saveOpen, setSaveOpen,
       // progress tracking

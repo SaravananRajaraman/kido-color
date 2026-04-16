@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 280">
+  <polygon points="72,72 96,28 128,88" stroke="#1C1C1C" stroke-width="8" stroke-linejoin="round" stroke-linecap="round" fill="#fff"/>
+  <polygon points="248,72 224,28 192,88" stroke="#1C1C1C" stroke-width="8" stroke-linejoin="round" stroke-linecap="round" fill="#fff"/>
+  <circle cx="160" cy="160" r="112" stroke="#1C1C1C" stroke-width="8" stroke-linejoin="round" stroke-linecap="round" fill="#fff"/>
+  <ellipse cx="122" cy="148" rx="18" ry="24" stroke="#1C1C1C" stroke-width="8" stroke-linejoin="round" stroke-linecap="round" fill="#fff"/>
+  <ellipse cx="198" cy="148" rx="18" ry="24" stroke="#1C1C1C" stroke-width="8" stroke-linejoin="round" stroke-linecap="round" fill="#fff"/>
+  <ellipse cx="122" cy="154" rx="9" ry="16" fill="#1C1C1C" stroke="none"/>
+  <ellipse cx="198" cy="154" rx="9" ry="16" fill="#1C1C1C" stroke="none"/>
+  <polygon points="160,186 150,200 170,200" stroke="#1C1C1C" stroke-width="8" stroke-linejoin="round" stroke-linecap="round" fill="#fff"/>
+  <path d="M150 200 Q138 216 128 210" stroke="#1C1C1C" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <path d="M170 200 Q182 216 192 210" stroke="#1C1C1C" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <line x1="98" y1="200" x2="38" y2="192" stroke="#1C1C1C" stroke-width="5" stroke-linecap="round"/>
+  <line x1="98" y1="212" x2="38" y2="212" stroke="#1C1C1C" stroke-width="5" stroke-linecap="round"/>
+  <line x1="222" y1="200" x2="282" y2="192" stroke="#1C1C1C" stroke-width="5" stroke-linecap="round"/>
+  <line x1="222" y1="212" x2="282" y2="212" stroke="#1C1C1C" stroke-width="5" stroke-linecap="round"/>
+</svg>
